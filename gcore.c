@@ -110,7 +110,7 @@ typedef struct {
     coredump_thread_state_flavor_t *flavors;
 } tir_t;
 
-typedef void(* thread_callback_t)(thread_t, void *);
+typedef void (* thread_callback_t)(thread_t, void *);
 
 static void _setup_sighandler();
 static int  _target_done(int);
@@ -159,31 +159,15 @@ static void _setup_sighandler()
 
 static int get_process_info(pid_t pid, struct kinfo_proc *kp)
 {
-    size_t bufsize      = 0;
-    size_t orig_bufsize = 0;
-    int    retry_count  = 0;
-    int    local_error  = 0;
-    int    mib[4]       = { CTL_KERN, KERN_PROC, KERN_PROC_PID, 0 };
+    size_t len      = 0;
+    int    ret      = 0;
+    int    mib[4]   = { CTL_KERN, KERN_PROC, KERN_PROC_PID, 0 };
 
     mib[3] = pid;
-    orig_bufsize = bufsize = sizeof(struct kinfo_proc);
+    len = sizeof(struct kinfo_proc);
 
-    for (retry_count = 0; ; retry_count++) {
-        local_error = 0;
-        bufsize = orig_bufsize;
-        if ((local_error = sysctl(mib, 4, kp, &bufsize, NULL, 0)) < 0) {
-            if (retry_count < 1000) {
-                sleep(1);
-                continue;
-            }
-            return local_error;
-        } else if (local_error == 0) {
-            break;
-        }
-        sleep(1);
-    }
-
-    return local_error;
+    ret = sysctl(mib, sizeof(mib) / sizeof(*mib), kp, &len, NULL, 0);
+    return ret;
 }
 
 static void _collect_thread_states(thread_t th, void *tirp)
@@ -217,10 +201,10 @@ static void _collect_thread_states(thread_t th, void *tirp)
 
 static int get_processor_type(cpu_type_t *cpu_type, cpu_subtype_t *cpu_subtype)
 {
-    kern_return_t               kr = KERN_FAILURE;
-    host_name_port_t            host = MACH_PORT_NULL;
-    host_priv_t                 host_priv = MACH_PORT_NULL;
-    processor_port_array_t      processor_list = (processor_port_array_t)0;
+    kern_return_t               kr              = KERN_FAILURE;
+    host_name_port_t            host            = MACH_PORT_NULL;
+    host_priv_t                 host_priv       = MACH_PORT_NULL;
+    processor_port_array_t      processor_list  = (processor_port_array_t)0;
     natural_t                   processor_count;
     natural_t                   info_count;
     processor_basic_info_data_t basic_info;
@@ -229,12 +213,12 @@ static int get_processor_type(cpu_type_t *cpu_type, cpu_subtype_t *cpu_subtype)
         return EINVAL;
     }
 
-    *cpu_type = CPU_TYPE_ANY;
+    *cpu_type    = CPU_TYPE_ANY;
     *cpu_subtype = CPU_SUBTYPE_MULTIPLE;
 
     host = mach_host_self();
-
     kr = host_get_host_priv_port(host, &host_priv);
+
     if (kr != KERN_SUCCESS) {
         mach_error("host_get_host_priv_port:", kr);
         goto out;
@@ -242,6 +226,7 @@ static int get_processor_type(cpu_type_t *cpu_type, cpu_subtype_t *cpu_subtype)
 
     processor_list = (processor_port_array_t)0;
     kr = host_processors(host_priv, &processor_list, &processor_count);
+
     if (kr != KERN_SUCCESS) {
         mach_error("host_processors:", kr);
         goto out;
@@ -250,6 +235,7 @@ static int get_processor_type(cpu_type_t *cpu_type, cpu_subtype_t *cpu_subtype)
     info_count = PROCESSOR_BASIC_INFO_COUNT;
     kr = processor_info(processor_list[0], PROCESSOR_BASIC_INFO, &host,
                         (processor_info_t)&basic_info, &info_count);
+
     if (kr == KERN_SUCCESS) {
         *cpu_type = basic_info.cpu_type;
         *cpu_subtype = basic_info.cpu_subtype;
@@ -288,13 +274,12 @@ static int get_vmmap_entries(task_t task)
     int           n       = 1;
 
     while (1) {
-        mach_msg_type_number_t count;
+        mach_msg_type_number_t          count;
         struct vm_region_submap_info_64 info;
-        uint32_t nesting_depth;
+        uint32_t                        nesting_depth;
 
         count = VM_REGION_SUBMAP_INFO_COUNT_64;
-        kr = vm_region_recurse_64(task, &address, &size, &nesting_depth,
-                                  (vm_region_info_64_t)&info, &count);
+        kr = vm_region_recurse_64(task, &address, &size, &nesting_depth, (vm_region_info_64_t)&info, &count);
         if (kr == KERN_INVALID_ADDRESS) {
             break;
         } else if (kr) {
