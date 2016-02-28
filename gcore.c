@@ -49,12 +49,11 @@
 typedef struct {
     int flavor;
     mach_msg_type_number_t count;
-} coredump_thread_state_flavor_t;
+} th_state_flavor_t;
 
 #if defined (__ppc__)
 
-static coredump_thread_state_flavor_t
-thread_flavor_array[] = {
+static th_state_flavor_t thread_flavor_array[] = {
     { PPC_THREAD_STATE,    PPC_THREAD_STATE_COUNT    },
     { PPC_FLOAT_STATE,     PPC_FLOAT_STATE_COUNT     },
     { PPC_EXCEPTION_STATE, PPC_EXCEPTION_STATE_COUNT },
@@ -63,8 +62,7 @@ thread_flavor_array[] = {
 
 #elif defined (__ppc64__)
 
-coredump_thread_state_flavor_t
-thread_flavor_array[] = {
+static th_state_flavor_t thread_flavor_array[] = {
     { PPC_THREAD_STATE64,    PPC_THREAD_STATE64_COUNT    },
     { PPC_FLOAT_STATE,       PPC_FLOAT_STATE_COUNT       },
     { PPC_EXCEPTION_STATE64, PPC_EXCEPTION_STATE64_COUNT },
@@ -73,8 +71,7 @@ thread_flavor_array[] = {
 
 #elif defined (__i386__)
 
-static coredump_thread_state_flavor_t
-thread_flavor_array[] = {
+static th_state_flavor_t thread_flavor_array[] = {
     { x86_THREAD_STATE32,    x86_THREAD_STATE32_COUNT    },
     { x86_FLOAT_STATE32,     x86_FLOAT_STATE32_COUNT     },
     { x86_EXCEPTION_STATE32, x86_EXCEPTION_STATE32_COUNT },
@@ -82,8 +79,7 @@ thread_flavor_array[] = {
 
 #elif defined (__x86_64__)
 
-static coredump_thread_state_flavor_t
-thread_flavor_array[] = {
+static th_state_flavor_t thread_flavor_array[] = {
     { x86_THREAD_STATE64,    x86_THREAD_STATE64_COUNT    },
     { x86_FLOAT_STATE64,     x86_FLOAT_STATE64_COUNT     },
     { x86_EXCEPTION_STATE64, x86_EXCEPTION_STATE64_COUNT },
@@ -104,10 +100,10 @@ static int coredump_nflavors = sizeof(thread_flavor_array)/sizeof(*thread_flavor
 #define MAX_TSTATE_FLAVORS 10
 
 typedef struct {
-    vm_offset_t header;
-    int         header_offset;
-    int         tstate_size;
-    coredump_thread_state_flavor_t *flavors;
+    vm_offset_t         header;
+    int                 header_offset;
+    int                 tstate_size;
+    th_state_flavor_t   *flavors;
 } tir_t;
 
 typedef void (* thread_callback_t)(thread_t, void *);
@@ -172,12 +168,13 @@ static int get_process_info(pid_t pid, struct kinfo_proc *kp)
 
 static void _collect_thread_states(thread_t th, void *tirp)
 {
-    vm_offset_t header;
-    int i, header_offset;
-    coredump_thread_state_flavor_t *flavors;
-    struct thread_command *tc;
-    tir_t *t = (tir_t *)tirp;
+    int                     i;
+    int                     header_offset;
+    vm_offset_t             header;
+    th_state_flavor_t       *flavors;
+    struct thread_command   *tc;
 
+    tir_t *t = (tir_t *)tirp;
     header = t->header;
     header_offset = t->header_offset;
     flavors = t->flavors;
@@ -188,8 +185,8 @@ static void _collect_thread_states(thread_t th, void *tirp)
     header_offset += sizeof(struct thread_command);
 
     for (i = 0; i < coredump_nflavors; i++) {
-        *(coredump_thread_state_flavor_t *)(header + header_offset) = flavors[i];
-        header_offset += sizeof(coredump_thread_state_flavor_t);
+        *(th_state_flavor_t *)(header + header_offset) = flavors[i];
+        header_offset += sizeof(th_state_flavor_t);
         get_thread_status(th, flavors[i].flavor,
                             (thread_state_t)(header + header_offset),
                             &flavors[i].count);
@@ -371,12 +368,12 @@ int coredump_to_file(pid_t pid, const char *corefilename)
     size_t                 mach_header_sz;
     size_t                 segment_command_sz;
     ssize_t                wc;
-    cpu_type_t             cpu_type = CPU_TYPE_ANY;
+    cpu_type_t             cpu_type    = CPU_TYPE_ANY;
     cpu_subtype_t          cpu_subtype = CPU_SUBTYPE_MULTIPLE;
 
     thread_array_t         thread_list;
     mach_msg_type_number_t thread_count;
-    coredump_thread_state_flavor_t flavors[MAX_TSTATE_FLAVORS];
+    th_state_flavor_t      flavors[MAX_TSTATE_FLAVORS];
 
     uint32_t                        nesting_depth = 0;
     struct vm_region_submap_info_64 vbr;
@@ -464,8 +461,7 @@ int coredump_to_file(pid_t pid, const char *corefilename)
     tstate_size = 0;
 
     for (i = 0; i < coredump_nflavors; i++) {
-        tstate_size += sizeof(coredump_thread_state_flavor_t) +
-                              (flavors[i].count * sizeof(int));
+        tstate_size += sizeof(th_state_flavor_t) + (flavors[i].count * sizeof(int));
     }
 
     command_size = segment_count * segment_command_sz            +
