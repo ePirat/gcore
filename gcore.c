@@ -21,7 +21,6 @@
  */
 
 #define PROGVERS "1.3"
-
 #define PROGNAME "gcore"
 
 #include <errno.h>
@@ -45,7 +44,7 @@
 
 #include <mach-o/loader.h>
 
-#define CAST_DOWN(type, addr) (((type)((uintptr_t)(addr)))) 
+#define CAST_DOWN(type, addr) (((type)((uintptr_t)(addr))))
 
 typedef struct {
     int flavor;
@@ -69,7 +68,7 @@ static int coredump_nflavors = 4;
 coredump_thread_state_flavor_t
 thread_flavor_array[] = {
     { PPC_THREAD_STATE64,    PPC_THREAD_STATE64_COUNT    },
-    { PPC_FLOAT_STATE,       PPC_FLOAT_STATE_COUNT       }, 
+    { PPC_FLOAT_STATE,       PPC_FLOAT_STATE_COUNT       },
     { PPC_EXCEPTION_STATE64, PPC_EXCEPTION_STATE64_COUNT },
     { PPC_VECTOR_STATE,      PPC_VECTOR_STATE_COUNT      },
 };
@@ -79,7 +78,7 @@ static int coredump_nflavors = 4;
 #elif defined (__i386__)
 
 static coredump_thread_state_flavor_t
-thread_flavor_array[] = { 
+thread_flavor_array[] = {
     { x86_THREAD_STATE32,    x86_THREAD_STATE32_COUNT    },
     { x86_FLOAT_STATE32,     x86_FLOAT_STATE32_COUNT     },
     { x86_EXCEPTION_STATE32, x86_EXCEPTION_STATE32_COUNT },
@@ -90,7 +89,7 @@ static int coredump_nflavors = 3;
 #elif defined (__x86_64__)
 
 static coredump_thread_state_flavor_t
-thread_flavor_array[] = { 
+thread_flavor_array[] = {
     { x86_THREAD_STATE64,    x86_THREAD_STATE64_COUNT    },
     { x86_FLOAT_STATE64,     x86_FLOAT_STATE64_COUNT     },
     { x86_EXCEPTION_STATE64, x86_EXCEPTION_STATE64_COUNT },
@@ -99,15 +98,13 @@ thread_flavor_array[] = {
 static int coredump_nflavors = 3;
 
 #else
-
 #error Unsupported architecture
-
 #endif
 
 #define MAX_TSTATE_FLAVORS 10
 
 typedef struct {
-    vm_offset_t header; 
+    vm_offset_t header;
     int         hoffset;
     int         tstate_size;
     coredump_thread_state_flavor_t *flavors;
@@ -178,7 +175,7 @@ M_collect_thread_states(thread_t th, void *tirp)
     header = t->header;
     hoffset = t->hoffset;
     flavors = t->flavors;
-    
+
     tc = (struct thread_command *)(header + hoffset);
     tc->cmd = LC_THREAD;
     tc->cmdsize = sizeof(struct thread_command) + t->tstate_size;
@@ -213,7 +210,7 @@ M_get_processor_type(cpu_type_t *cpu_type, cpu_subtype_t *cpu_subtype)
 
     *cpu_type = CPU_TYPE_ANY;
     *cpu_subtype = CPU_SUBTYPE_MULTIPLE;
-   
+
     host = mach_host_self();
 
     kr = host_get_host_priv_port(host, &host_priv);
@@ -230,7 +227,7 @@ M_get_processor_type(cpu_type_t *cpu_type, cpu_subtype_t *cpu_subtype)
     }
 
     info_count = PROCESSOR_BASIC_INFO_COUNT;
-    kr = processor_info(processor_list[0], PROCESSOR_BASIC_INFO, &host, 
+    kr = processor_info(processor_list[0], PROCESSOR_BASIC_INFO, &host,
                         (processor_info_t)&basic_info, &info_count);
     if (kr == KERN_SUCCESS) {
         *cpu_type = basic_info.cpu_type;
@@ -275,7 +272,7 @@ M_get_vmmap_entries(task_t task)
         mach_msg_type_number_t count;
         struct vm_region_submap_info_64 info;
         uint32_t nesting_depth;
-  
+
         count = VM_REGION_SUBMAP_INFO_COUNT_64;
         kr = vm_region_recurse_64(task, &address, &size, &nesting_depth,
                                   (vm_region_info_64_t)&info, &count);
@@ -640,7 +637,7 @@ X_coredump(pid_t pid, const char *corefilename)
 
     M_task_iterate_threads(target_task, M_collect_thread_states, &tir1);
 
-    wc = pwrite(corefile_fd, (caddr_t)header, (size_t)header_size, (off_t)0); 
+    wc = pwrite(corefile_fd, (caddr_t)header, (size_t)header_size, (off_t)0);
 
     if (wc < 0) {
         error = errno;
@@ -732,7 +729,7 @@ main(int argc, char **argv)
     act.sa_handler = SIGINT_handler;
     sigfillset(&(act.sa_mask));
     sigaction(SIGINT, &act, NULL);
-    
+
     kr = X_coredump(pid, corefile_path);
     if (kr != KERN_SUCCESS) {
         fprintf(stderr, "failed to dump core for process %d (%d)\n", pid, kr);
