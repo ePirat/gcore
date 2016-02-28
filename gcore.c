@@ -672,8 +672,6 @@ int main(int argc, char **argv)
 {
     kern_return_t kr;
     pid_t pid;
-    struct sigaction act;
-    sigset_t sigset;
     int ch;
 
     if (argc < 2) {
