@@ -163,6 +163,9 @@ static int get_process_info(pid_t pid, struct kinfo_proc *kp)
     len = sizeof(struct kinfo_proc);
 
     ret = sysctl(mib, sizeof(mib) / sizeof(*mib), kp, &len, NULL, 0);
+    if (ret == -1) {
+        fprintf(stderr, "sysctl error: %s\n", strerror(errno));
+    }
     return ret;
 }
 
