@@ -93,6 +93,12 @@ thread_flavor_array[] = {
 #error Unsupported architecture
 #endif
 
+#if defined(__ppc64__) || defined(__x86_64__)
+#   define IS_ARCH_64 (1)
+#else
+#   define IS_ARCH_64 (0)
+#endif
+
 static int coredump_nflavors = sizeof(thread_flavor_array)/sizeof(*thread_flavor_array);
 
 #define MAX_TSTATE_FLAVORS 10
@@ -344,7 +350,6 @@ int
 X_coredump(pid_t pid, const char *corefilename)
 {
     unsigned int i;
-    int is_64 = 0;
     int error = 0, error1 = 0;
     kern_return_t kr = KERN_SUCCESS;
 
@@ -413,11 +418,12 @@ X_coredump(pid_t pid, const char *corefilename)
         return EINVAL; /* bitness must match */
     }
 
-#if defined(__ppc64__) || defined(__x86_64__)
-    is_64 = 1;
+#if IS_ARCH_64
+    /* 64-bit */
     mach_header_sz = sizeof(struct mach_header_64);
     segment_command_sz = sizeof(struct segment_command_64);
-#else /* 32-bit */
+#else
+    /* 32-bit */
     mach_header_sz = sizeof(struct mach_header);
     segment_command_sz = sizeof(struct segment_command);
 #endif
@@ -470,7 +476,7 @@ X_coredump(pid_t pid, const char *corefilename)
     header = (vm_offset_t)malloc(header_size);
     memset((void *)header, 0, header_size);
 
-    if (is_64) {
+    if (IS_ARCH_64) {
         mh64             = (struct mach_header_64 *)header;
         mh64->magic      = MH_MAGIC_64;
         mh64->cputype    = cpu_type;
@@ -509,7 +515,7 @@ X_coredump(pid_t pid, const char *corefilename)
                 break;
             }
 
-            if (!(is_64) && (vmoffset + vmsize > VM_MAX_ADDRESS)) {
+            if (!(IS_ARCH_64) && (vmoffset + vmsize > VM_MAX_ADDRESS)) {
                 kr = KERN_INVALID_ADDRESS;
                 break;
             }
@@ -530,7 +536,7 @@ X_coredump(pid_t pid, const char *corefilename)
         maxprot = vbr.max_protection;
         inherit = vbr.inheritance;
 
-        if (is_64) {
+        if (IS_ARCH_64) {
             sc64             = (struct segment_command_64 *)(header + hoffset);
             sc64->cmd        = LC_SEGMENT_64;
             sc64->cmdsize    = sizeof(struct segment_command_64);
@@ -618,7 +624,7 @@ X_coredump(pid_t pid, const char *corefilename)
         segment_count--;
     }
 
-    if (is_64) {
+    if (IS_ARCH_64) {
         mh64->ncmds -= segment_count;
     } else {
         mh->ncmds -= segment_count;
