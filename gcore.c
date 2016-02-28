@@ -20,7 +20,7 @@
  * http://osxbook.com
  */
 
-#define PROGVERS "1.2"
+#define PROGVERS "1.3"
 
 #define PROGNAME "gcore"
 
@@ -29,6 +29,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <sys/time.h>
+#include <signal.h>
 
 #include <sys/proc.h>
 #include <sys/sysctl.h>
