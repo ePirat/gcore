@@ -61,8 +61,6 @@ thread_flavor_array[] = {
     { PPC_VECTOR_STATE,    PPC_VECTOR_STATE_COUNT    },
 };
 
-static int coredump_nflavors = 4;
-
 #elif defined (__ppc64__)
 
 coredump_thread_state_flavor_t
@@ -73,8 +71,6 @@ thread_flavor_array[] = {
     { PPC_VECTOR_STATE,      PPC_VECTOR_STATE_COUNT      },
 };
 
-static int coredump_nflavors = 4;
-
 #elif defined (__i386__)
 
 static coredump_thread_state_flavor_t
@@ -83,8 +79,6 @@ thread_flavor_array[] = {
     { x86_FLOAT_STATE32,     x86_FLOAT_STATE32_COUNT     },
     { x86_EXCEPTION_STATE32, x86_EXCEPTION_STATE32_COUNT },
 };
-
-static int coredump_nflavors = 3;
 
 #elif defined (__x86_64__)
 
@@ -95,11 +89,11 @@ thread_flavor_array[] = {
     { x86_EXCEPTION_STATE64, x86_EXCEPTION_STATE64_COUNT },
 };
 
-static int coredump_nflavors = 3;
-
 #else
 #error Unsupported architecture
 #endif
+
+static int coredump_nflavors = sizeof(thread_flavor_array)/sizeof(*thread_flavor_array);
 
 #define MAX_TSTATE_FLAVORS 10
 
