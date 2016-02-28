@@ -299,7 +299,7 @@ M_target_done(int error)
         target_task = MACH_PORT_NULL;
     }
 
-    if ((corefile_fd != -1) && corefile_path) {
+    if ((corefile_fd != -1) && !corefile_path[0]) {
         ret = close(corefile_fd);
         corefile_fd = -1;
         if (error != 0) {
