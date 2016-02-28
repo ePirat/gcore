@@ -132,7 +132,7 @@ void signal_handler(__unused int s)
 
 static void usage_exit(void)
 {
-    fprintf(stderr, "usage: %s [-c <corefile>] <pid>\n", PROGNAME);
+    fprintf(stderr, "usage: %s [-c corefile] [-s] <pid>\n", PROGNAME);
     exit(EINVAL);
 }
 
@@ -656,25 +656,29 @@ int main(int argc, char **argv)
     kern_return_t kr;
     pid_t pid;
     int ch;
+    char stop = 0;
 
     if (argc < 2) {
         usage_exit();
     }
 
-    while ((ch = getopt(argc, argv, "c:")) != -1) {
+    while ((ch = getopt(argc, argv, "sc:")) != -1) {
         switch (ch) {
-        case 'c':
-            if (strlen(optarg) > MAXPATHLEN) {
-                fprintf(stderr, "specified path is too long (%s)\n", optarg);
-                exit(ENAMETOOLONG);
-            }
-            snprintf(corefile_path, MAXPATHLEN, "%s", optarg);
-            break;
+            case 's':
+                stop = 1;
+                break;
+            case 'c':
+                if (strlen(optarg) > MAXPATHLEN) {
+                    fprintf(stderr, "specified path is too long (%s)\n", optarg);
+                    exit(ENAMETOOLONG);
+                }
+                snprintf(corefile_path, MAXPATHLEN, "%s", optarg);
+                break;
 
-        case '?':
-        default:
-            usage_exit();
-            break;
+            case '?':
+            default:
+                usage_exit();
+                break;
         }
     }
 
@@ -705,6 +709,13 @@ int main(int argc, char **argv)
         exit(EPERM);
     }
 
+    if (stop) {
+        if (kill(pid, SIGSTOP) == -1) {
+            fprintf(stderr, "failed stopping process: %s\n", strerror(errno));
+            exit(errno);
+        }
+    }
+
     if (!corefile_path[0]) {
         snprintf(corefile_path, MAXPATHLEN, "core.%u", pid);
     }
@@ -716,6 +727,13 @@ int main(int argc, char **argv)
     if (kr != KERN_SUCCESS) {
         fprintf(stderr, "failed to dump core for process %d (%d)\n", pid, kr);
         exit(kr);
+    }
+
+    if (stop) {
+        if (kill(pid, SIGCONT) == -1) {
+            fprintf(stderr, "failed continuing process: %s\n", strerror(errno));
+            exit(errno);
+        }
     }
 
     exit(0);
