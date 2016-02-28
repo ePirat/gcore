@@ -129,21 +129,18 @@ static mach_port_t target_task = MACH_PORT_NULL;
 static int corefile_fd = -1;
 static char corefile_path[MAXPATHLEN + 1] = { 0 };
 
-void
-signal_handler(__unused int s)
+void signal_handler(__unused int s)
 {
     (void)_target_done(EINTR);
 }
 
-static void
-usage_exit(void)
+static void usage_exit(void)
 {
     fprintf(stderr, "usage: %s [-c <corefile>] <pid>\n", PROGNAME);
     exit(EINVAL);
 }
 
-static void
-_setup_sighandler()
+static void _setup_sighandler()
 {
     struct sigaction    action;
     sigset_t            block_mask;
@@ -160,8 +157,7 @@ _setup_sighandler()
     sigaction(SIGINT, &action, NULL);
 }
 
-static int
-get_process_info(pid_t pid, struct kinfo_proc *kp)
+static int get_process_info(pid_t pid, struct kinfo_proc *kp)
 {
     size_t bufsize      = 0;
     size_t orig_bufsize = 0;
@@ -190,8 +186,7 @@ get_process_info(pid_t pid, struct kinfo_proc *kp)
     return local_error;
 }
 
-static void
-_collect_thread_states(thread_t th, void *tirp)
+static void _collect_thread_states(thread_t th, void *tirp)
 {
     vm_offset_t header;
     int i, hoffset;
@@ -220,8 +215,7 @@ _collect_thread_states(thread_t th, void *tirp)
     t->hoffset = hoffset;
 }
 
-static int
-get_processor_type(cpu_type_t *cpu_type, cpu_subtype_t *cpu_subtype)
+static int get_processor_type(cpu_type_t *cpu_type, cpu_subtype_t *cpu_subtype)
 {
     kern_return_t               kr = KERN_FAILURE;
     host_name_port_t            host = MACH_PORT_NULL;
@@ -278,17 +272,15 @@ out:
     return kr;
 }
 
-static int
-get_thread_status(register thread_t       thread,
-                    int                     flavor,
-                    thread_state_t          tstate,
-                    mach_msg_type_number_t *count)
+static int get_thread_status(register thread_t      thread,
+                             int                    flavor,
+                             thread_state_t         tstate,
+                             mach_msg_type_number_t *count)
 {
     return thread_get_state(thread, flavor, tstate, count);
 }
 
-static int
-get_vmmap_entries(task_t task)
+static int get_vmmap_entries(task_t task)
 {
     kern_return_t kr      = KERN_SUCCESS;
     vm_address_t  address = 0;
@@ -321,8 +313,7 @@ get_vmmap_entries(task_t task)
     return n;
 }
 
-static int
-_target_done(int error)
+static int _target_done(int error)
 {
     int ret = 0;
 
@@ -343,10 +334,9 @@ _target_done(int error)
     return ret;
 }
 
-static int
-task_iterate_threads(task_t task,
-                       void (* func_callback)(thread_t, void *),
-                       void *func_arg)
+static int task_iterate_threads(task_t task,
+                                void (* func_callback)(thread_t, void *),
+                                void *func_arg)
 {
     unsigned int i;
     kern_return_t kr;
@@ -373,8 +363,7 @@ task_iterate_threads(task_t task,
     return KERN_SUCCESS;
 }
 
-int
-coredump_to_file(pid_t pid, const char *corefilename)
+int coredump_to_file(pid_t pid, const char *corefilename)
 {
     unsigned int i;
     int error = 0, error1 = 0;
@@ -679,8 +668,7 @@ out:
     return error;
 }
 
-int
-main(int argc, char **argv)
+int main(int argc, char **argv)
 {
     kern_return_t kr;
     pid_t pid;
