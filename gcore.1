@@ -1,0 +1,31 @@
+.TH gcore 1
+.SH NAME
+gcore \- modify files by randomly changing bits
+.SH SYNOPSIS
+.B gcore
+[\fB\-c\fR \fIcorefile\fR]
+[\fB\-s\fR]
+.IR PID
+.SH DESCRIPTION
+.B gcore
+dumps a core image of specified process without terminating it. By default the core is
+written to "core.<PID>". At least PID must be given.
+.SH OPTIONS
+.TP
+.BR \-c " \fIcorefile\fR
+Write the corefile to the specified file.
+Default is "core.<PID>".
+.TP
+.BR \-s\f
+Stop process while dumping core image and resume when done.
+.SH EXAMPLE
+To write a core dump of a process with pid 90421 to a file called "proc_dump" use the
+.BR gcore (1)
+command as follows:
+.PP
+.nf
+.RS
+gcore -c proc_dump 90421
+.RE
+.fi
+.PP
