@@ -112,15 +112,17 @@ typedef struct {
 
 typedef void(* thread_callback_t)(thread_t, void *);
 
-static int  B_get_process_info(pid_t, struct kinfo_proc *);
-static void M_collect_thread_states(thread_t, void *);
-static int  M_get_processor_type(cpu_type_t *, cpu_subtype_t *);
-static int  M_get_thread_status(register thread_t, int, thread_state_t,
-                                mach_msg_type_number_t *);
-static int  M_get_vmmap_entries(task_t);
-static int  M_target_done(int);
-static int  M_task_iterate_threads(task_t, thread_callback_t, void *);
-static int  X_coredump(pid_t, const char *);
+static void _setup_sighandler();
+static int  _target_done(int);
+static void _collect_thread_states(thread_t, void *);
+
+static int  get_vmmap_entries(task_t);
+static int  get_process_info(pid_t, struct kinfo_proc *);
+static int  get_processor_type(cpu_type_t *, cpu_subtype_t *);
+static int  get_thread_status(register thread_t, int, thread_state_t, mach_msg_type_number_t *);
+static int  task_iterate_threads(task_t, thread_callback_t, void *);
+
+static int  coredump_to_file(pid_t, const char *);
 
 /* globals */
 static mach_port_t target_task = MACH_PORT_NULL;
@@ -128,13 +130,38 @@ static int corefile_fd = -1;
 static char corefile_path[MAXPATHLEN + 1] = { 0 };
 
 void
-SIGINT_handler(__unused int s)
+signal_handler(__unused int s)
 {
-    (void)M_target_done(EINTR);
+    (void)_target_done(EINTR);
+}
+
+static void
+usage_exit(void)
+{
+    fprintf(stderr, "usage: %s [-c <corefile>] <pid>\n", PROGNAME);
+    exit(EINVAL);
+}
+
+static void
+_setup_sighandler()
+{
+    struct sigaction    action;
+    sigset_t            block_mask;
+
+    sigemptyset(&block_mask);
+
+    /* Block signals while handler runs */
+    sigaddset(&block_mask, SIGINT);
+    sigaddset(&block_mask, SIGQUIT);
+    action.sa_handler = signal_handler;
+    action.sa_mask    = block_mask;
+    action.sa_flags   = 0;
+    sigaction(SIGTSTP, &action, NULL);
+    sigaction(SIGINT, &action, NULL);
 }
 
 static int
-B_get_process_info(pid_t pid, struct kinfo_proc *kp)
+get_process_info(pid_t pid, struct kinfo_proc *kp)
 {
     size_t bufsize      = 0;
     size_t orig_bufsize = 0;
@@ -164,7 +191,7 @@ B_get_process_info(pid_t pid, struct kinfo_proc *kp)
 }
 
 static void
-M_collect_thread_states(thread_t th, void *tirp)
+_collect_thread_states(thread_t th, void *tirp)
 {
     vm_offset_t header;
     int i, hoffset;
@@ -184,7 +211,7 @@ M_collect_thread_states(thread_t th, void *tirp)
     for (i = 0; i < coredump_nflavors; i++) {
         *(coredump_thread_state_flavor_t *)(header + hoffset) = flavors[i];
         hoffset += sizeof(coredump_thread_state_flavor_t);
-        M_get_thread_status(th, flavors[i].flavor,
+        get_thread_status(th, flavors[i].flavor,
                             (thread_state_t)(header + hoffset),
                             &flavors[i].count);
         hoffset += flavors[i].count * sizeof(int);
@@ -194,7 +221,7 @@ M_collect_thread_states(thread_t th, void *tirp)
 }
 
 static int
-M_get_processor_type(cpu_type_t *cpu_type, cpu_subtype_t *cpu_subtype)
+get_processor_type(cpu_type_t *cpu_type, cpu_subtype_t *cpu_subtype)
 {
     kern_return_t               kr = KERN_FAILURE;
     host_name_port_t            host = MACH_PORT_NULL;
@@ -252,7 +279,7 @@ out:
 }
 
 static int
-M_get_thread_status(register thread_t       thread,
+get_thread_status(register thread_t       thread,
                     int                     flavor,
                     thread_state_t          tstate,
                     mach_msg_type_number_t *count)
@@ -261,7 +288,7 @@ M_get_thread_status(register thread_t       thread,
 }
 
 static int
-M_get_vmmap_entries(task_t task)
+get_vmmap_entries(task_t task)
 {
     kern_return_t kr      = KERN_SUCCESS;
     vm_address_t  address = 0;
@@ -295,7 +322,7 @@ M_get_vmmap_entries(task_t task)
 }
 
 static int
-M_target_done(int error)
+_target_done(int error)
 {
     int ret = 0;
 
@@ -317,7 +344,7 @@ M_target_done(int error)
 }
 
 static int
-M_task_iterate_threads(task_t task,
+task_iterate_threads(task_t task,
                        void (* func_callback)(thread_t, void *),
                        void *func_arg)
 {
@@ -347,7 +374,7 @@ M_task_iterate_threads(task_t task,
 }
 
 int
-X_coredump(pid_t pid, const char *corefilename)
+coredump_to_file(pid_t pid, const char *corefilename)
 {
     unsigned int i;
     int error = 0, error1 = 0;
@@ -384,7 +411,7 @@ X_coredump(pid_t pid, const char *corefilename)
 
     struct kinfo_proc kp, kp_self;
 
-    kr = M_get_processor_type(&cpu_type, &cpu_subtype);
+    kr = get_processor_type(&cpu_type, &cpu_subtype);
     if (kr != KERN_SUCCESS) {
         fprintf(stderr, "failed to get processor type (%d)\n", kr);
         return kr;
@@ -396,14 +423,14 @@ X_coredump(pid_t pid, const char *corefilename)
         return kr;
     }
 
-    kr = B_get_process_info(pid, &kp);
+    kr = get_process_info(pid, &kp);
     if (kr) {
         fprintf(stderr, "failed to retrieve process information for %d\n", pid);
         mach_port_deallocate(mach_task_self(), target_task);
         return kr;
     }
 
-    kr = B_get_process_info(getpid(), &kp_self);
+    kr = get_process_info(getpid(), &kp_self);
     if (kr) {
         fprintf(stderr, "failed to retrieve my own process information\n");
         mach_port_deallocate(mach_task_self(), target_task);
@@ -457,7 +484,7 @@ X_coredump(pid_t pid, const char *corefilename)
                       thread_count * sizeof(thread_act_t));
     }
 
-    segment_count = M_get_vmmap_entries(target_task);
+    segment_count = get_vmmap_entries(target_task);
 
     bcopy(thread_flavor_array, flavors, sizeof(thread_flavor_array));
     tstate_size = 0;
@@ -592,11 +619,9 @@ X_coredump(pid_t pid, const char *corefilename)
                 }
 
 #if defined(__ppc64__) || defined(__x86_64__)
-                wc = pwrite(corefile_fd, (void *)local_address, xfer_vmsize,
-                            xfer_foffset);
+                wc = pwrite(corefile_fd, (void *)local_address, xfer_vmsize, xfer_foffset);
 #else
-                wc = pwrite(corefile_fd,
-                            (void *)CAST_DOWN(uint32_t, local_address),
+                wc = pwrite(corefile_fd, (void *)CAST_DOWN(uint32_t, local_address),
                             CAST_DOWN(uint32_t, xfer_vmsize), xfer_foffset);
 #endif
                 if (wc < 0) {
@@ -604,8 +629,7 @@ X_coredump(pid_t pid, const char *corefilename)
                     fprintf(stderr, "failed to write core file\n");
                 }
 
-                (void)mach_vm_deallocate(mach_task_self(), local_address,
-                                         local_size);
+                (void)mach_vm_deallocate(mach_task_self(), local_address, local_size);
 
                 if (wc < 0) {
                     goto out;
@@ -635,7 +659,7 @@ X_coredump(pid_t pid, const char *corefilename)
     tir1.flavors     = flavors;
     tir1.tstate_size = tstate_size;
 
-    M_task_iterate_threads(target_task, M_collect_thread_states, &tir1);
+    task_iterate_threads(target_task, _collect_thread_states, &tir1);
 
     wc = pwrite(corefile_fd, (caddr_t)header, (size_t)header_size, (off_t)0);
 
@@ -646,20 +670,13 @@ X_coredump(pid_t pid, const char *corefilename)
     free((void *)header);
 
 out:
-    error1 = M_target_done(error);
+    error1 = _target_done(error);
 
     if (error == 0) {
         error = error1;
     }
 
     return error;
-}
-
-static void
-usage_exit(void)
-{
-    fprintf(stderr, "usage: %s [-c <corefile>] <pid>\n", PROGNAME);
-    exit(EINVAL);
 }
 
 int
@@ -723,14 +740,10 @@ main(int argc, char **argv)
         snprintf(corefile_path, MAXPATHLEN, "core.%u", pid);
     }
 
-    sigfillset(&sigset);
-    sigdelset(&sigset, SIGINT);
-    pthread_sigmask(SIG_SETMASK, &sigset, NULL);
-    act.sa_handler = SIGINT_handler;
-    sigfillset(&(act.sa_mask));
-    sigaction(SIGINT, &act, NULL);
+    // Setup signal handler
+    _setup_sighandler();
 
-    kr = X_coredump(pid, corefile_path);
+    kr = coredump_to_file(pid, corefile_path);
     if (kr != KERN_SUCCESS) {
         fprintf(stderr, "failed to dump core for process %d (%d)\n", pid, kr);
         exit(kr);
