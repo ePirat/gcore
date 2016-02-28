@@ -105,7 +105,7 @@ static int coredump_nflavors = sizeof(thread_flavor_array)/sizeof(*thread_flavor
 
 typedef struct {
     vm_offset_t header;
-    int         hoffset;
+    int         header_offset;
     int         tstate_size;
     coredump_thread_state_flavor_t *flavors;
 } tir_t;
@@ -189,30 +189,30 @@ static int get_process_info(pid_t pid, struct kinfo_proc *kp)
 static void _collect_thread_states(thread_t th, void *tirp)
 {
     vm_offset_t header;
-    int i, hoffset;
+    int i, header_offset;
     coredump_thread_state_flavor_t *flavors;
     struct thread_command *tc;
     tir_t *t = (tir_t *)tirp;
 
     header = t->header;
-    hoffset = t->hoffset;
+    header_offset = t->header_offset;
     flavors = t->flavors;
 
-    tc = (struct thread_command *)(header + hoffset);
+    tc = (struct thread_command *)(header + header_offset);
     tc->cmd = LC_THREAD;
     tc->cmdsize = sizeof(struct thread_command) + t->tstate_size;
-    hoffset += sizeof(struct thread_command);
+    header_offset += sizeof(struct thread_command);
 
     for (i = 0; i < coredump_nflavors; i++) {
-        *(coredump_thread_state_flavor_t *)(header + hoffset) = flavors[i];
-        hoffset += sizeof(coredump_thread_state_flavor_t);
+        *(coredump_thread_state_flavor_t *)(header + header_offset) = flavors[i];
+        header_offset += sizeof(coredump_thread_state_flavor_t);
         get_thread_status(th, flavors[i].flavor,
-                            (thread_state_t)(header + hoffset),
+                            (thread_state_t)(header + header_offset),
                             &flavors[i].count);
-        hoffset += flavors[i].count * sizeof(int);
+        header_offset += flavors[i].count * sizeof(int);
     }
 
-    t->hoffset = hoffset;
+    t->header_offset = header_offset;
 }
 
 static int get_processor_type(cpu_type_t *cpu_type, cpu_subtype_t *cpu_subtype)
@@ -373,11 +373,11 @@ int coredump_to_file(pid_t pid, const char *corefilename)
     int                    command_size;
     int                    header_size;
     int                    tstate_size;
-    int                    hoffset;
-    off_t                  foffset;
-    vm_map_offset_t        vmoffset;
+    int                    header_offset;
+    off_t                  file_offset;
+    vm_map_offset_t        vm_offset;
     vm_offset_t            header;
-    vm_map_size_t          vmsize;
+    vm_map_size_t          vm_size;
     vm_prot_t              prot;
     vm_prot_t              maxprot;
     vm_inherit_t           inherit;
@@ -511,9 +511,9 @@ int coredump_to_file(pid_t pid, const char *corefilename)
         mh->sizeofcmds   = command_size;
     }
 
-    hoffset = mach_header_sz;          /* offset into header */
-    foffset = round_page(header_size); /* offset into file   */
-    vmoffset = MACH_VM_MIN_ADDRESS;    /* offset into VM     */
+    header_offset = mach_header_sz;         /* offset into header           */
+    file_offset = round_page(header_size);  /* offset into file             */
+    vm_offset = MACH_VM_MIN_ADDRESS;        /* offset into virtual memory   */
 
     while (segment_count > 0) {
 
@@ -521,17 +521,16 @@ int coredump_to_file(pid_t pid, const char *corefilename)
         struct segment_command_64 *sc64;
 
         while (1) { /* next region */
-
             vbrcount = VM_REGION_SUBMAP_INFO_COUNT_64;
 
-            if ((kr = mach_vm_region_recurse(target_task, &vmoffset, &vmsize,
+            if ((kr = mach_vm_region_recurse(target_task, &vm_offset, &vm_size,
                                              &nesting_depth,
                                              (vm_region_recurse_info_t)&vbr,
                                              &vbrcount)) != KERN_SUCCESS) {
                 break;
             }
 
-            if (!(IS_ARCH_64) && (vmoffset + vmsize > VM_MAX_ADDRESS)) {
+            if (!(IS_ARCH_64) && (vm_offset + vm_size > VM_MAX_ADDRESS)) {
                 kr = KERN_INVALID_ADDRESS;
                 break;
             }
@@ -553,65 +552,65 @@ int coredump_to_file(pid_t pid, const char *corefilename)
         inherit = vbr.inheritance;
 
         if (IS_ARCH_64) {
-            sc64             = (struct segment_command_64 *)(header + hoffset);
+            sc64             = (struct segment_command_64 *)(header + header_offset);
             sc64->cmd        = LC_SEGMENT_64;
             sc64->cmdsize    = sizeof(struct segment_command_64);
             sc64->segname[0] = 0;
-            sc64->vmaddr     = vmoffset;
-            sc64->vmsize     = vmsize;
-            sc64->fileoff    = foffset;
-            sc64->filesize   = vmsize;
+            sc64->vmaddr     = vm_offset;
+            sc64->vmsize     = vm_size;
+            sc64->fileoff    = file_offset;
+            sc64->filesize   = vm_size;
             sc64->maxprot    = maxprot;
             sc64->initprot   = prot;
             sc64->nsects     = 0;
         } else  {
-            sc               = (struct segment_command *) (header + hoffset);
+            sc               = (struct segment_command *) (header + header_offset);
             sc->cmd          = LC_SEGMENT;
             sc->cmdsize      = sizeof(struct segment_command);
             sc->segname[0]   = 0;
-            sc->vmaddr       = CAST_DOWN(vm_offset_t,vmoffset);
-            sc->vmsize       = CAST_DOWN(vm_size_t,vmsize);
-            sc->fileoff      = CAST_DOWN(uint32_t,foffset);
-            sc->filesize     = CAST_DOWN(uint32_t,vmsize);
+            sc->vmaddr       = CAST_DOWN(vm_offset_t,vm_offset);
+            sc->vmsize       = CAST_DOWN(vm_size_t,vm_size);
+            sc->fileoff      = CAST_DOWN(uint32_t,file_offset);
+            sc->filesize     = CAST_DOWN(uint32_t,vm_size);
             sc->maxprot      = maxprot;
             sc->initprot     = prot;
             sc->nsects       = 0;
         }
 
         if ((prot & VM_PROT_READ) == 0) {
-            mach_vm_protect(target_task, vmoffset, vmsize, FALSE,
+            mach_vm_protect(target_task, vm_offset, vm_size, FALSE,
                             prot | VM_PROT_READ);
         }
 
         if ((maxprot & VM_PROT_READ) == VM_PROT_READ &&
             (vbr.user_tag != VM_MEMORY_IOKIT)) {
 
-            vm_map_size_t tmp_vmsize   = vmsize;
-            off_t         xfer_foffset = foffset;
+            vm_map_size_t tmp_vm_size   = vm_size;
+            off_t         xfer_foffset = file_offset;
 
-            while (tmp_vmsize > 0) {
-                vm_map_size_t          xfer_vmsize = tmp_vmsize;
+            while (tmp_vm_size > 0) {
+                vm_map_size_t          xfer_vm_size = tmp_vm_size;
                 vm_offset_t            local_address;
                 mach_msg_type_number_t local_size;
 
-                if (xfer_vmsize > INT_MAX) {
-                    xfer_vmsize = INT_MAX;
+                if (xfer_vm_size > INT_MAX) {
+                    xfer_vm_size = INT_MAX;
                 }
 
-                kr = mach_vm_read(target_task, vmoffset, xfer_vmsize,
+                kr = mach_vm_read(target_task, vm_offset, xfer_vm_size,
                                   &local_address, &local_size);
 
-                if ((kr != KERN_SUCCESS) || (local_size != xfer_vmsize)) {
+                if ((kr != KERN_SUCCESS) || (local_size != xfer_vm_size)) {
                     error = kr;
                     fprintf(stderr, "failed to read target's memory\n");
                     goto out;
                 }
 
 #if defined(__ppc64__) || defined(__x86_64__)
-                wc = pwrite(corefile_fd, (void *)local_address, xfer_vmsize, xfer_foffset);
+                wc = pwrite(corefile_fd, (void *)local_address, xfer_vm_size, xfer_foffset);
 #else
                 wc = pwrite(corefile_fd, (void *)CAST_DOWN(uint32_t, local_address),
-                            CAST_DOWN(uint32_t, xfer_vmsize), xfer_foffset);
+                            CAST_DOWN(uint32_t, xfer_vm_size), xfer_foffset);
 #endif
                 if (wc < 0) {
                     error = errno;
@@ -624,15 +623,15 @@ int coredump_to_file(pid_t pid, const char *corefilename)
                     goto out;
                 }
 
-                tmp_vmsize -= xfer_vmsize;
-                xfer_foffset += xfer_vmsize;
+                tmp_vm_size -= xfer_vm_size;
+                xfer_foffset += xfer_vm_size;
 
-            } /* while (tmp_vmsize > 0) */
+            } /* while (tmp_vm_size > 0) */
         }
 
-        hoffset  += segment_command_sz;
-        foffset  += vmsize;
-        vmoffset += vmsize;
+        header_offset  += segment_command_sz;
+        file_offset  += vm_size;
+        vm_offset += vm_size;
 
         segment_count--;
     }
@@ -643,10 +642,10 @@ int coredump_to_file(pid_t pid, const char *corefilename)
         mh->ncmds -= segment_count;
     }
 
-    tir1.header      = header;
-    tir1.hoffset     = hoffset;
-    tir1.flavors     = flavors;
-    tir1.tstate_size = tstate_size;
+    tir1.header         = header;
+    tir1.header_offset  = header_offset;
+    tir1.flavors        = flavors;
+    tir1.tstate_size    = tstate_size;
 
     task_iterate_threads(target_task, _collect_thread_states, &tir1);
 
